@@ -122,9 +122,36 @@ def lambda_handler(event, context):
         }
 
     except Exception as error:
-        # Something went wrong — log the error and return HTTP 500
-        print(f"[Lambda] ERROR: {str(error)}")
+        error_msg = str(error)
+        print(f"[Lambda] ERROR: {error_msg}")
+        
+        # ── Step 8: Send SNS Email Alert on Failure ──────────────────────
+        try:
+            import os
+            sns_topic_arn = os.environ.get('SNS_TOPIC_ARN')
+            
+            if sns_topic_arn:
+                sns = boto3.client('sns')
+                message = (
+                    f"🚨 PneumoCloud Pipeline Alert 🚨\n\n"
+                    f"The AWS Lambda ETL processor failed to process an image.\n\n"
+                    f"Error Details:\n{error_msg}\n\n"
+                    f"Please check the AWS CloudWatch logs for more information."
+                )
+                
+                sns.publish(
+                    TopicArn=sns_topic_arn,
+                    Subject="PneumoCloud AI - Pipeline Failure Alert",
+                    Message=message
+                )
+                print("[Lambda] Alert email sent successfully via SNS")
+            else:
+                print("[Lambda] SNS_TOPIC_ARN not set. Skipping email alert.")
+                
+        except Exception as sns_error:
+            print(f"[Lambda] Failed to send SNS alert: {str(sns_error)}")
+
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': str(error)})
+            'body': json.dumps({'error': error_msg})
         }

@@ -1,0 +1,4 @@
+# Azure Functions Python worker
+azure-functions
+# Azure Cosmos DB SDK
+azure-cosmos

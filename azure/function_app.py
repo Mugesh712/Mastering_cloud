@@ -81,27 +81,55 @@ def savediagnosis(req: func.HttpRequest) -> func.HttpResponse:
             'compliance':          'HIPAA-Ready',   # metadata for audit purposes
         }
 
-        # ── Step 3: Log the record (replaces DB write in this demo) ───────
-        logging.info('─── MEDICAL RECORD SAVED ───────────────────────')
+        # ── Step 3: Save the record to Azure Cosmos DB ────────────────────
+        logging.info('─── SAVING TO COSMOS DB ────────────────────────')
         logging.info(f"  Record ID  : {record['record_id']}")
-        logging.info(f"  Timestamp  : {record['timestamp']}")
         logging.info(f"  Patient ID : {record['patient_id']}")
-        logging.info(f"  File       : {record['patient_file']}")
         logging.info(f"  Diagnosis  : {record['diagnosis']}")
-        logging.info(f"  Confidence : {record['confidence']}")
-        logging.info(f"  Risk Score : {record['risk_score']}")
         logging.info(f"  Triage     : {record['triage_level']}")
-        logging.info(f"  Department : {record['department']}")
+        
+        try:
+            import os
+            from azure.cosmos import CosmosClient, exceptions
+            
+            # Fetch connection details from environment variables
+            endpoint = os.environ.get('COSMOS_ENDPOINT')
+            key = os.environ.get('COSMOS_KEY')
+            
+            if endpoint and key:
+                client = CosmosClient(endpoint, key)
+                database = client.get_database_client('PneumoCloudDB')
+                container = database.get_container_client('Records')
+                
+                # In Cosmos DB, 'id' is a required specific field name
+                record['id'] = record['record_id']
+                
+                # Insert the document
+                container.create_item(body=record)
+                logging.info('[Azure] Successfully saved record to Cosmos DB (NoSQL)')
+                saved_to_db = True
+            else:
+                logging.warning('[Azure] COSMOS_ENDPOINT or COSMOS_KEY not set. Record only logged, not saved to DB.')
+                saved_to_db = False
+                
+        except exceptions.CosmosHttpResponseError as e:
+            logging.error(f'[Azure] Cosmos DB Error: {e.message}')
+            saved_to_db = False
+        except Exception as e:
+            logging.error(f'[Azure] Failed to connect to Cosmos DB: {str(e)}')
+            saved_to_db = False
+
         logging.info('────────────────────────────────────────────────')
 
         # ── Step 4: Return confirmation to GCP ────────────────────────────
         response = {
-            'status':       'SAVED TO AZURE',
+            'status':       'SAVED TO AZURE DB' if saved_to_db else 'LOGGED IN AZURE',
             'record_id':    record['record_id'],
             'patient_id':   record['patient_id'],
             'diagnosis':    record['diagnosis'],
             'triage_level': record['triage_level'],
             'timestamp':    record['timestamp'],
+            'db_saved':     saved_to_db,
             'compliance':   'HIPAA-Ready',
         }
 
