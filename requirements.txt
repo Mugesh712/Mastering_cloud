@@ -1,24 +1,29 @@
-# ===== Core ML =====
-tensorflow==2.15.0
-keras==2.15.0
-scikit-learn==1.4.0
-xgboost==2.0.3
-numpy==1.26.4
-pandas==2.2.0
-Pillow==10.2.0
-matplotlib==3.8.2
-seaborn==0.13.2
-opencv-python-headless==4.9.0.80
+# ─────────────────────────────────────────────────────────────────
+# requirements.txt — Root-Level Dependencies
+# PneumoCloud AI | Multi-Cloud Pneumonia Detection System
+#
+# These packages are required to run the Streamlit dashboard locally.
+# Install with: pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────────
 
-# ===== Frontend =====
-streamlit==1.31.0
-plotly==5.18.0
+# Frontend dashboard
+streamlit>=1.32.0
 
-# ===== Cloud SDKs =====
-boto3==1.34.0
-functions-framework==3.*
+# HTTP requests (used by dashboard to call GCP Cloud Function)
+requests>=2.31.0
 
-# ===== Utilities =====
-requests==2.31.0
-joblib==1.3.2
-tqdm==4.66.1
+# Image processing
+Pillow>=10.0.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+
+# AI / ML (needed for Local Model mode)
+tensorflow>=2.15.0
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+
+# AWS SDK (needed for local testing of Lambda)
+boto3>=1.34.0
+
+# Plotting
+matplotlib>=3.7.0

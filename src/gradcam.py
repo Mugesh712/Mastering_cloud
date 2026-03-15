@@ -1,211 +1,96 @@
 """
-Grad-CAM Heatmap Generator
-============================
-Multi-Cloud Intelligent Chest X-ray Triage System
+gradcam.py — Grad-CAM Heatmap Generator
+=========================================
+PneumoCloud AI | Multi-Cloud Pneumonia Detection System
 
-Grad-CAM (Gradient-weighted Class Activation Mapping) generates
-a heatmap showing which regions of the X-ray image the CNN model
-focused on when making its diagnosis.
+Grad-CAM (Gradient-weighted Class Activation Mapping) highlights
+the regions of the X-ray that drove the AI's decision.
 
-This makes the AI model EXPLAINABLE — doctors can see WHY
-the model made its prediction.
+HOW IT WORKS:
+  1. Run a forward pass through DenseNet-121
+  2. Take the gradients from the last convolutional layer
+  3. Weight each feature map by its gradient magnitude
+  4. Project the result back onto the original image as a colour heatmap
 
-Usage:
-    >>> from gradcam import generate_gradcam, overlay_gradcam
-    >>> heatmap = generate_gradcam(model, image, 'conv5_block16_concat')
-    >>> result = overlay_gradcam(original_image, heatmap)
+If the model is not loaded, returns None gracefully.
 """
 
 import numpy as np
-import tensorflow as tf
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from PIL import Image
 import io
 import base64
+from PIL import Image
 
 
-def generate_gradcam(model, img_array, last_conv_layer_name=None):
+def generate_gradcam(model, img_array: np.ndarray) -> str | None:
     """
-    Generate Grad-CAM heatmap for a given image.
+    Generate a Grad-CAM heatmap and return it as a base64-encoded PNG string.
 
     Args:
-        model: Trained Keras model
-        img_array: Preprocessed image array of shape (1, 224, 224, 3)
-        last_conv_layer_name: Name of the last convolutional layer.
-            For DenseNet-121, use 'conv5_block16_concat'.
-            If None, auto-detects.
+        model:     Loaded Keras DenseNet-121 model (or None)
+        img_array: Preprocessed image as numpy array, shape (224, 224, 3), values in [0, 1]
 
     Returns:
-        heatmap: numpy array of shape (224, 224) with values 0-1
+        base64 PNG string of the heatmap overlay, or None if model unavailable
     """
-    # Auto-detect last conv layer if not specified
-    if last_conv_layer_name is None:
-        for layer in reversed(model.layers):
-            if isinstance(layer, tf.keras.layers.Conv2D) or 'conv' in layer.name:
-                last_conv_layer_name = layer.name
-                break
+    if model is None:
+        return None     # no model loaded — caller handles this gracefully
 
-    if last_conv_layer_name is None:
-        raise ValueError("Could not find a convolutional layer in the model")
+    try:
+        import tensorflow as tf
 
-    # Create a model that outputs both the last conv layer and the prediction
-    grad_model = tf.keras.models.Model(
-        inputs=model.input,
-        outputs=[model.get_layer(last_conv_layer_name).output, model.output]
-    )
+        # ── Step 1: Create a sub-model that outputs the last conv layer AND the final prediction ──
+        # We need both to compute gradients
+        last_conv_layer = model.get_layer('conv5_block16_2_conv')   # DenseNet-121 last conv layer
+        grad_model = tf.keras.Model(
+            inputs=model.inputs,
+            outputs=[last_conv_layer.output, model.output]
+        )
 
-    # Compute gradients
-    with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_array)
-        loss = predictions[:, 0]    # For binary classification
+        # ── Step 2: Record gradients during the forward pass ──
+        img_input = np.expand_dims(img_array, axis=0)   # shape: (1, 224, 224, 3)
 
-    # Get gradients of the loss with respect to conv layer output
-    grads = tape.gradient(loss, conv_outputs)
+        with tf.GradientTape() as tape:
+            conv_outputs, predictions = grad_model(img_input)
+            # We care about the class with index 0 (pneumonia probability)
+            loss = predictions[:, 0]
 
-    # Global average pooling of gradients
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        # ── Step 3: Compute gradients of the prediction w.r.t. the conv layer output ──
+        grads = tape.gradient(loss, conv_outputs)
 
-    # Weight the conv outputs by the pooled gradients
-    conv_outputs = conv_outputs[0]
-    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
+        # ── Step 4: Pool gradients over spatial dimensions (Global Average Pooling) ──
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
-    # ReLU and normalize
-    heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-8)
-    heatmap = heatmap.numpy()
+        # ── Step 5: Weight each feature map channel by its pooled gradient ──
+        conv_outputs = conv_outputs[0]
+        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap)
 
-    # Resize to original image size
-    heatmap = np.uint8(255 * heatmap)
-    heatmap_img = Image.fromarray(heatmap).resize((224, 224))
-    heatmap = np.array(heatmap_img, dtype=np.float32) / 255.0
+        # ── Step 6: Normalise heatmap to [0, 1] ──
+        heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-8)
+        heatmap = heatmap.numpy()
 
-    return heatmap
+        # ── Step 7: Resize heatmap from conv layer size back to 224x224 ──
+        heatmap_img = Image.fromarray(np.uint8(heatmap * 255))
+        heatmap_img = heatmap_img.resize((224, 224), Image.LANCZOS)
+        heatmap_arr = np.array(heatmap_img)
 
+        # ── Step 8: Apply colour map (red = high attention, blue = low) ──
+        # Manual jet colourmap: blue → cyan → green → yellow → red
+        coloured = np.zeros((224, 224, 3), dtype=np.uint8)
+        coloured[:, :, 0] = np.clip(heatmap_arr * 2 - 128, 0, 255)          # red channel
+        coloured[:, :, 1] = np.clip(255 - np.abs(heatmap_arr * 2 - 255), 0, 255)  # green
+        coloured[:, :, 2] = np.clip(255 - heatmap_arr * 2, 0, 255)          # blue channel
 
-def overlay_gradcam(original_image, heatmap, alpha=0.4, colormap='jet'):
-    """
-    Overlay Grad-CAM heatmap on the original image.
+        # ── Step 9: Overlay heatmap on original X-ray image ──
+        original_img = Image.fromarray(np.uint8(img_array * 255))
+        heatmap_pil  = Image.fromarray(coloured)
+        blended      = Image.blend(original_img, heatmap_pil, alpha=0.4)
 
-    Args:
-        original_image: Original image array (224, 224, 3) with values 0-1
-        heatmap: Grad-CAM heatmap (224, 224) with values 0-1
-        alpha: Transparency of heatmap overlay (0-1)
-        colormap: Matplotlib colormap name
+        # ── Step 10: Encode as base64 PNG so it can be sent over HTTP or displayed ──
+        buffer = io.BytesIO()
+        blended.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-    Returns:
-        overlaid_image: numpy array (224, 224, 3) with heatmap overlay
-    """
-    # Apply colormap to heatmap
-    cmap = cm.get_cmap(colormap)
-    heatmap_colored = cmap(heatmap)[:, :, :3]    # Drop alpha channel
-
-    # Overlay on original image
-    if original_image.ndim == 2:
-        original_image = np.stack([original_image] * 3, axis=-1)
-
-    overlaid = original_image * (1 - alpha) + heatmap_colored * alpha
-    overlaid = np.clip(overlaid, 0, 1)
-
-    return overlaid
-
-
-def gradcam_to_base64(overlaid_image):
-    """
-    Convert Grad-CAM overlay image to base64 string.
-    Used for sending via API / storing in database.
-
-    Args:
-        overlaid_image: numpy array (224, 224, 3) with values 0-1
-
-    Returns:
-        str: Base64 encoded PNG image
-    """
-    img_uint8 = np.uint8(overlaid_image * 255)
-    pil_img = Image.fromarray(img_uint8)
-
-    buffer = io.BytesIO()
-    pil_img.save(buffer, format='PNG')
-    buffer.seek(0)
-
-    return base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-
-def plot_gradcam(original_image, heatmap, prediction, confidence,
-                 save_path=None):
-    """
-    Plot side-by-side: Original X-ray | Grad-CAM Heatmap | Overlay.
-
-    Args:
-        original_image: (224, 224, 3) array
-        heatmap: (224, 224) array
-        prediction: str ('NORMAL' or 'PNEUMONIA')
-        confidence: float (0-1)
-        save_path: Optional path to save the figure
-    """
-    overlay = overlay_gradcam(original_image, heatmap)
-
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-    # Original
-    axes[0].imshow(original_image, cmap='gray' if original_image.ndim == 2 else None)
-    axes[0].set_title('Original X-Ray', fontsize=14)
-    axes[0].axis('off')
-
-    # Heatmap
-    axes[1].imshow(heatmap, cmap='jet')
-    axes[1].set_title('Grad-CAM Heatmap', fontsize=14)
-    axes[1].axis('off')
-
-    # Overlay
-    axes[2].imshow(overlay)
-    color = 'red' if prediction == 'PNEUMONIA' else 'green'
-    axes[2].set_title(f'{prediction} ({confidence:.2%})', fontsize=14, color=color)
-    axes[2].axis('off')
-
-    plt.suptitle('Grad-CAM Explainability — Where the Model Looks',
-                 fontsize=16, fontweight='bold')
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Saved Grad-CAM visualization to {save_path}")
-
-    plt.show()
-
-
-def generate_gradcam_for_image(model, image_path, last_conv_layer_name=None):
-    """
-    Complete Grad-CAM pipeline for a single image file.
-
-    Args:
-        model: Trained Keras model
-        image_path: Path to the X-ray image
-        last_conv_layer_name: Last conv layer name
-
-    Returns:
-        dict with original image, heatmap, overlay, prediction, confidence
-    """
-    # Load and preprocess
-    img = Image.open(image_path).convert('RGB')
-    img = img.resize((224, 224))
-    img_array = np.array(img, dtype=np.float32) / 255.0
-    img_input = np.expand_dims(img_array, axis=0)
-
-    # Predict
-    pred_prob = model.predict(img_input, verbose=0)[0][0]
-    prediction = 'PNEUMONIA' if pred_prob > 0.5 else 'NORMAL'
-    confidence = pred_prob if pred_prob > 0.5 else 1 - pred_prob
-
-    # Generate Grad-CAM
-    heatmap = generate_gradcam(model, img_input, last_conv_layer_name)
-    overlay = overlay_gradcam(img_array, heatmap)
-
-    return {
-        'original': img_array,
-        'heatmap': heatmap,
-        'overlay': overlay,
-        'prediction': prediction,
-        'confidence': float(confidence),
-        'overlay_base64': gradcam_to_base64(overlay)
-    }
+    except Exception as e:
+        print(f"[GradCAM] Could not generate heatmap: {e}")
+        return None

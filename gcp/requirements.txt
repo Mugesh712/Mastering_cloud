@@ -1,3 +1,15 @@
-functions-framework==3.*
-numpy==1.26.4
-Pillow==10.2.0
+# ─────────────────────────────────────────────────────────────────
+# gcp/requirements.txt — GCP Cloud Function Dependencies
+# PneumoCloud AI | Multi-Cloud Pneumonia Detection System
+#
+# These packages are bundled with the GCP Cloud Function during deploy.
+# GCP reads this file automatically when you run:
+#   gcloud functions deploy pneumonia-analyzer ...
+# ─────────────────────────────────────────────────────────────────
+
+# GCP Cloud Functions framework — required for HTTP triggers
+functions-framework>=3.0.0
+
+# Image processing — used to decode and resize X-ray images
+Pillow>=10.0.0
+numpy>=1.24.0
