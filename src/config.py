@@ -43,6 +43,20 @@ FINE_TUNE_LR     = 1e-5    # lower rate for fine-tuning
 FINE_TUNE_LAYERS = 30      # number of DenseNet layers to unfreeze
 
 # ─────────────────────────────────────────
+# DATA AUGMENTATION
+# Used to solve Class Imbalance during training
+# (4273 Pneumonia images vs 1583 Normal images)
+# ─────────────────────────────────────────
+DATA_AUGMENTATION_CONFIG = {
+    'rotation_range': 15,       # Rotate slightly up to 15 degrees
+    'zoom_range': 0.1,          # Zoom in/out by 10%
+    'width_shift_range': 0.1,   # Shift horizontally by 10%
+    'height_shift_range': 0.1,  # Shift vertically by 10%
+    'horizontal_flip': True,    # Allow flipping left-to-right
+    'fill_mode': 'nearest'      # How to fill missing pixels
+}
+
+# ─────────────────────────────────────────
 # TRIAGE THRESHOLDS
 # Risk score → triage category
 #   ≥ 0.8  → CRITICAL (ICU)

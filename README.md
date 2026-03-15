@@ -179,10 +179,14 @@ Open: **http://localhost:8501**
 
 ## 🧠 AI Model Details
 
+The Kaggle Chest X-ray dataset suffers from Severe Class Imbalance (4,273 Pneumonia images vs 1,583 Normal images). To prevent the model from becoming biased towards diagnosing Pneumonia, we utilized **Data Augmentation** (rotation, zoom, shifting, and flipping) during training to artificially expand the Normal images and force the DenseNet-121 model to learn robust, generalized features.
+
 | Metric | Value |
 |---|---|
 | Architecture | DenseNet-121 (ImageNet pre-training) |
 | Dataset | Kaggle Chest X-ray — 5,856 images |
+| Class Imbalance | 73% Pneumonia / 27% Normal |
+| Solution | **Data Augmentation** used during Colab training |
 | Test Accuracy | ~94% |
 | AUC-ROC | ~0.97 |
 | Explainability | Grad-CAM heatmaps |
