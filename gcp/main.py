@@ -199,6 +199,68 @@ def compute_triage(raw_score: float, patient_id: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────
+# HELPER: Generate Clinical Summary via Servam AI
+# ──────────────────────────────────────────────────────
+
+def generate_clinical_summary(patient_id, diagnosis, confidence, risk_score, triage_level, recommended_actions):
+    """
+    Call the Servam AI API to write a professional clinical summary
+    based strictly on the DenseNet model's outputs.
+    """
+    import os
+    import urllib.request
+    import json
+    
+    api_key = os.environ.get('SERVAM_API_KEY')
+    api_url = os.environ.get('SERVAM_API_URL', 'https://api.servamai.com/v1/chat/completions')
+    
+    if not api_key:
+        print("[GCP] Servam AI key not found, skipping natural language summary.")
+        return "Clinical summary currently unavailable (Servam AI API key not configured)."
+        
+    print(f"[GCP] Generating clinical summary via Servam AI...")
+    
+    prompt = f"""
+    You are a professional medical assistant. Write a short, single-paragraph clinical summary for an X-ray report.
+    Use ONLY the data provided below. Do not add outside diagnoses. Be extremely concise.
+    
+    Patient ID: {patient_id}
+    AI Diagnosis: {diagnosis}
+    AI Confidence: {confidence:.0%}
+    Calculated Risk Score: {risk_score:.2f}/1.00
+    Triage Level: {triage_level}
+    Recommended Actions: {', '.join(recommended_actions)}
+    """
+    
+    payload = {
+        "model": "servam-clinical-fast", # or whichever model name they use
+        "messages": [
+            {"role": "system", "content": "You are a professional medical scribe writing clinical notes based strictly on provided data. Do not hallucinate."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 150
+    }
+    
+    try:
+        req = urllib.request.Request(api_url)
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('Authorization', f'Bearer {api_key}')
+        
+        response = urllib.request.urlopen(req, json.dumps(payload).encode('utf-8'), timeout=15)
+        response_data = json.loads(response.read().decode('utf-8'))
+        
+        # Standard OpenAI response format
+        summary = response_data['choices'][0]['message']['content'].strip()
+        print("[GCP] ✅ Servam AI Summary generated successfully.")
+        return summary
+        
+    except Exception as e:
+        print(f"[GCP] ❌ Servam AI API failed: {str(e)}")
+        return f"Clinical summary unavailable (AI generation failed: {str(e)})."
+
+
+# ──────────────────────────────────────────────────────
 # MAIN ENTRY POINT — GCP calls this on every HTTP request
 # ──────────────────────────────────────────────────────
 
@@ -238,8 +300,18 @@ def predict_pneumonia(request):
 
         # ── Step 2: Compute triage ───────────────────────────────────────
         triage = compute_triage(raw_score, patient_id)
+        
+        # ── Step 3: Generate Servam AI Summary ───────────────────────────
+        ai_summary = generate_clinical_summary(
+            patient_id, 
+            diagnosis, 
+            confidence, 
+            triage['risk_score'], 
+            triage['triage_level'], 
+            triage['recommended_actions']
+        )
 
-        # ── Step 3: Assemble the full result ─────────────────────────────
+        # ── Step 4: Assemble the full result ─────────────────────────────
         result = {
             'status':              'Pipeline Complete',
             'patient_id':          patient_id,
@@ -250,6 +322,7 @@ def predict_pneumonia(request):
             'triage_level':        triage['triage_level'],
             'department':          triage['department'],
             'recommended_actions': triage['recommended_actions'],
+            'ai_summary':          ai_summary,
             'ai_model':            ai_mode,
             'cloud_pipeline': {
                 'step_1_storage':   f'AWS S3 [{source}]',
@@ -259,7 +332,7 @@ def predict_pneumonia(request):
             }
         }
 
-        # ── Step 4: Forward the result to Azure for storage ──────────────
+        # ── Step 5: Forward the result to Azure for storage ──────────────
         azure_payload = {
             'patient_file': filename,
             'patient_id':   patient_id,
@@ -268,6 +341,7 @@ def predict_pneumonia(request):
             'risk_score':   triage['risk_score'],
             'triage_level': triage['triage_level'],
             'department':   triage['department'],
+            'ai_summary':   ai_summary,
             'actions':      json.dumps(triage['recommended_actions'])
         }
 

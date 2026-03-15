@@ -230,15 +230,19 @@ with st.spinner("🔄 Running AI pipeline..."):
         if risk_score >= 0.8:
             triage_level, dept = 'CRITICAL', 'ICU — Pulmonology'
             actions = ['Admit to ICU immediately', 'Start IV antibiotics', 'Order chest CT scan']
+            mock_summary = "CRITICAL FINDING: Right lower lobe consolidation consistent with severe bacterial pneumonia. Immediate ICU admission and broad-spectrum IV antibiotics recommended. High risk of decompensation."
         elif risk_score >= 0.5:
             triage_level, dept = 'URGENT', 'Emergency Department'
             actions = ['Admit to Emergency Department', 'Start oral antibiotics', 'Monitor vitals']
+            mock_summary = "URGENT FINDING: Patchy infiltrates suggestive of community-acquired pneumonia. Recommend Emergency Department admission for monitoring and antibiotics."
         elif risk_score >= 0.25:
             triage_level, dept = 'STANDARD', 'Outpatient Radiology'
             actions = ['Follow-up within 48 hours', 'Repeat X-ray in 2 weeks']
+            mock_summary = "STANDARD FINDING: Mild interstitial markings. Possible early viral process. Recommend close outpatient follow-up."
         else:
             triage_level, dept = 'LOW', 'General Outpatient'
             actions = ['Routine follow-up', 'Annual screening']
+            mock_summary = "NORMAL FINDING: Clear lung fields. No evidence of acute cardiopulmonary abnormalities. Routine care recommended."
 
         result = {
             'diagnosis':           diagnosis,
@@ -247,6 +251,7 @@ with st.spinner("🔄 Running AI pipeline..."):
             'triage_level':        triage_level,
             'department':          dept,
             'recommended_actions': actions,
+            'ai_summary':          mock_summary,
             'ai_model':            'Mock AI (Demo Mode)',
             'azure_status':        'DEMO — not saved',
             'cloud_pipeline': {
@@ -320,6 +325,16 @@ with col3:
     badge_class = badge_map.get(triage, 'badge-low')
     st.markdown(f'<span class="{badge_class}">{triage}</span>', unsafe_allow_html=True)
     st.markdown(f"**Department:** {dept}")
+
+st.divider()
+
+# ── Servam AI Clinical Summary ───────────────────────
+st.markdown("### 📝 Servam AI Clinical Summary")
+ai_summary = result.get('ai_summary')
+if ai_summary:
+    st.info(f'"{ai_summary}"', icon="🤖")
+else:
+    st.caption("No AI summary generated for this record.")
 
 st.divider()
 

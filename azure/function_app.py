@@ -76,6 +76,7 @@ def savediagnosis(req: func.HttpRequest) -> func.HttpResponse:
             'risk_score':          body.get('risk_score', 0.0),
             'triage_level':        body.get('triage_level', 'UNKNOWN'),
             'department':          body.get('department', 'N/A'),
+            'ai_summary':          body.get('ai_summary', 'No clinical summary generated.'),
             'recommended_actions': body.get('actions', '[]'),
             'stored_by':           'Microsoft Azure Functions',
             'compliance':          'HIPAA-Ready',   # metadata for audit purposes
@@ -87,6 +88,7 @@ def savediagnosis(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f"  Patient ID : {record['patient_id']}")
         logging.info(f"  Diagnosis  : {record['diagnosis']}")
         logging.info(f"  Triage     : {record['triage_level']}")
+        logging.info(f"  AI Summary : {'Yes' if 'No clinical' not in record['ai_summary'] else 'None'}")
         
         try:
             import os
