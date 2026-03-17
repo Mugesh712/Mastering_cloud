@@ -80,7 +80,7 @@ GCP_FUNCTION_URL = os.environ.get(
 
 AZURE_FUNCTION_URL = os.environ.get(
     'AZURE_FUNCTION_URL',
-    'https://pneumonia-receiver-mugesh1-dvahfjd8cca9gmcm.centralus-01.azurewebsites.net/api/savediagnosis'
+    'https://pneumonia-receiver-mugesh1.azurewebsites.net/api/savediagnosis'
 )
 
 # ─────────────────────────────────────────

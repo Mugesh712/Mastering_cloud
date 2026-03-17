@@ -194,9 +194,12 @@ with st.spinner("🔄 Running AI pipeline..."):
     if "☁️ Cloud" in mode:
         # ── CLOUD MODE: Send to real GCP endpoint ──────────────────────
         try:
+            # Compress image to 224x224 for AI inference
             uploaded_file.seek(0)
-            image_bytes  = uploaded_file.read()
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            img_for_cloud = Image.open(uploaded_file).convert('RGB').resize((224, 224))
+            buf = io.BytesIO()
+            img_for_cloud.save(buf, format='JPEG', quality=70)
+            image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
 
             payload = {
                 'filename':     uploaded_file.name,
@@ -329,7 +332,7 @@ with col3:
 st.divider()
 
 # ── Servam AI Clinical Summary ───────────────────────
-st.markdown("### 📝 Servam AI Clinical Summary")
+st.markdown("### 📝 Gemini AI Clinical Summary")
 ai_summary = result.get('ai_summary')
 if ai_summary:
     st.info(f'"{ai_summary}"', icon="🤖")
