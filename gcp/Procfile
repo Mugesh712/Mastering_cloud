@@ -1,0 +1,1 @@
+web: functions-framework --target=predict_pneumonia --port=$PORT
