@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PneumoCloud AI — Multi-Cloud Chest X-Ray Classification</title>
+    <meta name="description" content="AI-powered chest X-ray classification system detecting 4 diseases using DenseNet-121 across AWS, GCP, and Azure.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- HEADER -->
+    <!-- ═══════════════════════════════════════════ -->
+    <header class="header stagger-item">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🫁</span>
+                <div>
+                    <h1>PneumoCloud AI</h1>
+                    <p class="subtitle">Multi-Cloud Chest X-Ray Classification</p>
+                </div>
+            </div>
+            <nav class="nav">
+                <button class="nav-btn active" id="nav-analyze" onclick="showPage('analyze')">
+                    <span>🔬</span> Analyse
+                </button>
+                <button class="nav-btn" id="nav-records" onclick="showPage('records')">
+                    <span>📋</span> Records
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- ANALYSE PAGE -->
+    <!-- ═══════════════════════════════════════════ -->
+    <main class="page active" id="page-analyze">
+
+        <!-- Pipeline Indicator -->
+        <div class="pipeline-bar stagger-item">
+            <div class="pipeline-step" id="step-1">
+                <div class="step-dot active"></div>
+                <span>Upload</span>
+            </div>
+            <div class="pipeline-line"></div>
+            <div class="pipeline-step" id="step-2">
+                <div class="step-dot"></div>
+                <span>AWS Lambda</span>
+            </div>
+            <div class="pipeline-line"></div>
+            <div class="pipeline-step" id="step-3">
+                <div class="step-dot"></div>
+                <span>GCP AI</span>
+            </div>
+            <div class="pipeline-line"></div>
+            <div class="pipeline-step" id="step-4">
+                <div class="step-dot"></div>
+                <span>Azure Store</span>
+            </div>
+            <div class="pipeline-line"></div>
+            <div class="pipeline-step" id="step-5">
+                <div class="step-dot"></div>
+                <span>Results</span>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="upload-section stagger-item">
+            <div class="upload-area" id="upload-area">
+                <div class="upload-content" id="upload-content">
+                    <div class="upload-icon">📂</div>
+                    <h2>Upload Chest X-Ray</h2>
+                    <p>Drag & drop a JPEG or PNG image, or click to browse</p>
+                    <p class="upload-hint">AI will classify into 4 categories (COVID, Lung Opacity, Viral Pneumonia, Normal)</p>
+                    <input type="file" id="file-input" accept=".jpg,.jpeg,.png" hidden>
+                    <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+                        Choose File
+                    </button>
+                </div>
+                <div class="upload-preview" id="upload-preview" style="display:none">
+                    <img id="preview-image" alt="Uploaded X-Ray">
+                    <span class="scan-overlay-text" id="scan-text">Analyzing...</span>
+                    <div class="preview-info">
+                        <span id="file-name"></span>
+                        <button class="btn btn-secondary btn-sm" onclick="resetUpload()">Change</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label>Mode</label>
+                    <div class="mode-toggle">
+                        <button class="mode-btn active" id="mode-demo" onclick="setMode('demo')">🎮 Demo</button>
+                        <button class="mode-btn" id="mode-cloud" onclick="setMode('cloud')">☁️ Cloud</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="patient-id">Patient ID</label>
+                    <input type="text" id="patient-id" value="P-001" placeholder="Enter patient ID">
+                </div>
+                <button class="btn btn-analyze" id="analyze-btn" onclick="analyzeImage()" disabled>
+                    <span class="btn-text">🔬 Analyse X-Ray</span>
+                    <span class="btn-loading" style="display:none">
+                        <span class="spinner"></span> Analysing...
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loading-overlay" style="display:none">
+            <div class="loading-card">
+                <div class="pulse-ring"></div>
+                <div class="loading-icon">🧠</div>
+                <h3>AI Processing</h3>
+                <p id="loading-text">Running DenseNet-121 inference...</p>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="results-section" style="display:none">
+
+            <!-- Diagnosis Header -->
+            <div class="result-header" id="result-header">
+                <div class="diagnosis-badge" id="diagnosis-badge">
+                    <span class="diagnosis-icon" id="diagnosis-icon"></span>
+                    <div>
+                        <h2 id="diagnosis-name"></h2>
+                        <p id="diagnosis-confidence"></p>
+                    </div>
+                </div>
+                <div class="model-info" id="model-info"></div>
+            </div>
+
+            <!-- Key Metrics Row -->
+            <div class="metrics-row">
+                <div class="metric-card" id="metric-risk">
+                    <div class="metric-label">Risk Score</div>
+                    <div class="metric-value" id="risk-value"></div>
+                    <div class="risk-bar-container">
+                        <div class="risk-bar" id="risk-bar"></div>
+                    </div>
+                    <div class="risk-level" id="risk-level"></div>
+                </div>
+                <div class="metric-card" id="metric-triage">
+                    <div class="metric-label">Triage Level</div>
+                    <div class="triage-badge" id="triage-badge"></div>
+                    <div class="metric-sub" id="triage-dept"></div>
+                </div>
+                <div class="metric-card" id="metric-azure">
+                    <div class="metric-label">Azure Status</div>
+                    <div class="azure-status" id="azure-status"></div>
+                </div>
+            </div>
+
+            <!-- Report Grid -->
+            <div class="report-grid">
+
+                <!-- Left: Chart -->
+                <div class="report-left">
+                    <div class="card">
+                        <h3>📈 Disease Probability Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="prob-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Clinical Report -->
+                <div class="report-right">
+                    <div class="card card-report">
+                        <div class="report-header-bar">
+                            <h3>📋 Clinical Analysis Report</h3>
+                            <button class="btn-download" onclick="downloadReport()" title="Download Report as PDF">
+                                📥 Download PDF
+                            </button>
+                        </div>
+                        <div class="report-meta">
+                            <span id="report-patient">Patient: --</span>
+                            <span id="report-date">Date: --</span>
+                            <span id="report-model">Model: --</span>
+                        </div>
+                        <div class="report-content" id="summary-content"></div>
+                        <!-- Email Report Section -->
+                        <div class="email-report-section" id="email-section" style="display:none">
+                            <div class="email-input-group">
+                                <span class="email-icon">📧</span>
+                                <input type="email" id="email-input" placeholder="Enter recipient's email address" autocomplete="email">
+                                <button class="btn-send-email" id="send-email-btn" onclick="sendReportEmail()">
+                                    <span class="btn-text">✉️ Send Report</span>
+                                    <span class="btn-loading" style="display:none">
+                                        <span class="spinner"></span> Sending...
+                                    </span>
+                                </button>
+                            </div>
+                            <div class="email-status" id="email-status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- RECORDS PAGE -->
+    <!-- ═══════════════════════════════════════════ -->
+    <main class="page" id="page-records">
+        <div class="records-header stagger-item">
+            <h2>📋 Record History</h2>
+            <p>Past diagnosis records stored in Azure Cosmos DB</p>
+        </div>
+        <div class="records-content" id="records-content">
+            <div class="loading-records">
+                <span class="spinner"></span> Fetching records from Azure...
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer stagger-item">
+        <p>PneumoCloud AI — Built for the Mastering Cloud university course (2026) — AWS • GCP • Azure • DenseNet-121</p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
